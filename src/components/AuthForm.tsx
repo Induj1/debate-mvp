@@ -2,11 +2,23 @@
 
 import { useState } from "react";
 import { signInWithEmail, signUpWithEmail, signOut } from "@/lib/auth";
+import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Label } from "./ui/label";
+
+function getAuthErrorMessage(err: { message: string }): string {
+  const msg = err.message || "";
+  if (
+    (msg.includes("Failed to fetch") || msg.includes("fetch")) &&
+    !isSupabaseConfigured()
+  ) {
+    return "Supabase is not configured for this deployment. In Vercel: Project → Settings → Environment Variables, add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (same as in .env locally), then redeploy.";
+  }
+  return msg;
+}
 
 export default function AuthForm() {
   const { user, loading, refreshUser } = useAuth();
@@ -20,11 +32,11 @@ export default function AuthForm() {
     setError("");
     if (isSignUp) {
       const { error: err } = await signUpWithEmail(email, password);
-      if (err) setError(err.message);
+      if (err) setError(getAuthErrorMessage(err));
       else await refreshUser();
     } else {
       const { error: err } = await signInWithEmail(email, password);
-      if (err) setError(err.message);
+      if (err) setError(getAuthErrorMessage(err));
       else await refreshUser();
     }
   };

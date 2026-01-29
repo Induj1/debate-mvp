@@ -74,7 +74,9 @@ export function useWebRTC(matchId: string, userId: string) {
     let pc: RTCPeerConnection | null = null;
     let delayId: ReturnType<typeof setTimeout> | null = null;
     const channelName = `webrtc-${matchId}`;
-    const channel = supabase.channel(channelName);
+    const channel = supabase.channel(channelName, {
+      config: { broadcast: { self: false } },
+    });
 
     channelRef.current = channel;
 
@@ -123,14 +125,22 @@ export function useWebRTC(matchId: string, userId: string) {
         };
 
         pc.onicecandidate = (e) => {
-          if (e.candidate) sendSignal({ type: "ice", from: userId, candidate: e.candidate.toJSON() });
+          if (e.candidate) {
+            const json = e.candidate.toJSON();
+            sendSignal({ type: "ice", from: userId, candidate: json });
+          }
         };
+
+        /** Serialize SDP to plain JSON so Supabase broadcast accepts it (avoids 400). */
+        function toPlainSdp(sdp: RTCSessionDescriptionInit): { type: RTCSdpType; sdp: string } {
+          return { type: sdp.type as RTCSdpType, sdp: sdp.sdp || "" };
+        }
 
         async function createOffer() {
           if (!pc) return;
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
-          sendSignal({ type: "offer", from: userId, sdp: offer });
+          sendSignal({ type: "offer", from: userId, sdp: toPlainSdp(offer) });
         }
 
         async function handleOffer(sdp: RTCSessionDescriptionInit) {
@@ -141,7 +151,7 @@ export function useWebRTC(matchId: string, userId: string) {
           pendingCandidatesRef.current = [];
           const answer = await peer.createAnswer();
           await peer.setLocalDescription(answer);
-          sendSignal({ type: "answer", from: userId, sdp: answer });
+          sendSignal({ type: "answer", from: userId, sdp: toPlainSdp(answer) });
         }
 
         channel
