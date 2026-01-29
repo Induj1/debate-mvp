@@ -109,7 +109,8 @@ export function useWebRTC(matchId: string, userId: string) {
 
         pc.ontrack = (e) => {
           if (cancelled) return;
-          setRemoteStream(e.streams[0]);
+          const stream = e.streams?.[0];
+          if (stream) setRemoteStream(stream);
           setStatus("connected");
         };
 
@@ -168,10 +169,14 @@ export function useWebRTC(matchId: string, userId: string) {
             } else if (msg.type === "offer") {
               handleOffer(msg.sdp);
             } else if (msg.type === "answer") {
-              pc?.setRemoteDescription(new RTCSessionDescription(msg.sdp)).then(() => {
-                pendingCandidatesRef.current.forEach((c) =>
-                  pc?.addIceCandidate(new RTCIceCandidate(c))
-                );
+              const peer = pc;
+              if (!peer) return;
+              peer.setRemoteDescription(new RTCSessionDescription(msg.sdp)).then(async () => {
+                for (const c of pendingCandidatesRef.current) {
+                  try {
+                    await peer.addIceCandidate(new RTCIceCandidate(c));
+                  } catch (_) {}
+                }
                 pendingCandidatesRef.current = [];
               });
             } else if (msg.type === "ice") {

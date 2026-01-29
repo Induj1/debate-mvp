@@ -25,9 +25,11 @@ export default function VideoCall({
   }, [localStream]);
 
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
+    const video = remoteVideoRef.current;
+    if (!video || !remoteStream) return;
+    video.srcObject = remoteStream;
+    video.muted = false;
+    video.play().catch(() => {});
   }, [remoteStream]);
 
   if (error) {
@@ -60,7 +62,8 @@ export default function VideoCall({
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          className="absolute inset-0 w-full h-full object-cover"
+          muted={false}
+          className="absolute inset-0 w-full h-full object-cover bg-black"
           title="Opponent"
         />
         {/* Local (you) video - picture-in-picture */}
@@ -81,6 +84,11 @@ export default function VideoCall({
         {status === "disconnected" && remoteStream === null && localStream !== null && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60">
             <p className="text-white text-sm">Waiting for opponent to join.</p>
+          </div>
+        )}
+        {status === "connected" && remoteStream && remoteStream.getVideoTracks().length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+            <p className="text-white text-sm">Opponent’s camera is off.</p>
           </div>
         )}
       </div>
