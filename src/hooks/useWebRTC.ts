@@ -6,10 +6,11 @@ import { supabase } from "@/lib/supabaseClient";
 const STUN_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
 ];
 
 type SignalMessage =
-  | { type: "join"; from: string }
+  | { type: "join"; from: string; rand: number }
   | { type: "offer"; from: string; sdp: RTCSessionDescriptionInit }
   | { type: "answer"; from: string; sdp: RTCSessionDescriptionInit }
   | { type: "ice"; from: string; candidate: RTCIceCandidateInit };
@@ -46,6 +47,7 @@ export function useWebRTC(matchId: string, userId: string) {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const otherUserIdRef = useRef<string | null>(null);
+  const joinRandRef = useRef<number>(Math.random());
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
 
   const retry = useCallback(() => {
@@ -110,7 +112,12 @@ export function useWebRTC(matchId: string, userId: string) {
         pc.ontrack = (e) => {
           if (cancelled) return;
           const stream = e.streams?.[0];
-          if (stream) setRemoteStream(stream);
+          if (stream) {
+            stream.getTracks().forEach((t) => {
+              t.enabled = true;
+            });
+            setRemoteStream(stream);
+          }
           setStatus("connected");
         };
 
@@ -162,7 +169,10 @@ export function useWebRTC(matchId: string, userId: string) {
 
             if (msg.type === "join") {
               otherUserIdRef.current = msg.from;
-              const isOfferer = userId < msg.from;
+              const myRand = joinRandRef.current;
+              const otherRand = typeof msg.rand === "number" ? msg.rand : 0;
+              const isOfferer =
+                myRand > otherRand || (myRand === otherRand && userId > msg.from);
               if (isOfferer) {
                 createOffer();
               }
@@ -190,7 +200,8 @@ export function useWebRTC(matchId: string, userId: string) {
           })
           .subscribe((status) => {
             if (status === "SUBSCRIBED") {
-              sendSignal({ type: "join", from: userId });
+              joinRandRef.current = Math.random();
+              sendSignal({ type: "join", from: userId, rand: joinRandRef.current });
             }
           });
       } catch (e) {

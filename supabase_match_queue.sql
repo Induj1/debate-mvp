@@ -72,31 +72,37 @@ begin
 
   chosen_topic := topics[1 + floor(random() * array_length(topics, 1))::int];
 
-  -- Find one waiting row from another user and lock it
-  select id into other_id
-  from match_queue
-  where status = 'waiting' and user_id != my_uid
-  order by created_at asc
-  limit 1
-  for update skip locked;
+  -- Try to find a waiting opponent (retry a few times so near-simultaneous clicks can match)
+  for i in 1..4 loop
+    select id into other_id
+    from match_queue
+    where status = 'waiting' and user_id != my_uid
+    order by created_at asc
+    limit 1
+    for update skip locked;
 
-  if other_id is not null then
-    -- Pair: update opponent's row and insert our row with same match_id and topic
-    update match_queue
-    set status = 'matched', match_id = new_match_id, topic = chosen_topic
-    where id = other_id;
+    if other_id is not null then
+      -- Pair: update opponent's row and insert our row with same match_id and topic
+      update match_queue
+      set status = 'matched', match_id = new_match_id, topic = chosen_topic
+      where id = other_id;
 
-    insert into match_queue (user_id, status, match_id, topic)
-    values (my_uid, 'matched', new_match_id, chosen_topic);
+      insert into match_queue (user_id, status, match_id, topic)
+      values (my_uid, 'matched', new_match_id, chosen_topic);
 
-    return jsonb_build_object('match_id', new_match_id, 'topic', chosen_topic);
-  else
-    -- No opponent: add ourselves to queue
-    insert into match_queue (user_id, status)
-    values (my_uid, 'waiting');
+      return jsonb_build_object('match_id', new_match_id, 'topic', chosen_topic);
+    end if;
 
-    return jsonb_build_object('match_id', null, 'topic', null);
-  end if;
+    if i < 4 then
+      perform pg_sleep(0.2 * i);
+    end if;
+  end loop;
+
+  -- No opponent after retries: add ourselves to queue
+  insert into match_queue (user_id, status)
+  values (my_uid, 'waiting');
+
+  return jsonb_build_object('match_id', null, 'topic', null);
 end;
 $$;
 

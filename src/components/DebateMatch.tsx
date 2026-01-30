@@ -17,31 +17,51 @@ export default function DebateMatch() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (user && status === 'waiting') {
-      const sub = listenForMatch(user.id, (match) => {
-        setStatus('matched');
-        setTopic(match.topic);
-        setMatchId(match.match_id || match.id);
-      });
-      return () => { sub.unsubscribe(); };
-    }
+    if (!user || status !== "waiting") return;
+    const sub = listenForMatch(user.id, (match) => {
+      setStatus("matched");
+      setTopic(match.topic);
+      setMatchId(match.match_id || match.id);
+    });
+    return () => {
+      sub.unsubscribe();
+    };
+  }, [user, status]);
+
+  useEffect(() => {
+    if (!user || status !== "waiting") return;
+    const retryCount = 5;
+    const intervalMs = 2200;
+    let attempts = 0;
+    const t = setInterval(async () => {
+      attempts += 1;
+      if (attempts > retryCount) return;
+      const { data, error: err } = await requestDebate(user.id);
+      if (err) return;
+      if (data?.match_id && data?.topic) {
+        setStatus("matched");
+        setMatchId(data.match_id);
+        setTopic(data.topic);
+      }
+    }, intervalMs);
+    return () => clearInterval(t);
   }, [user, status]);
 
   const handleStart = async () => {
-    setError('');
+    setError("");
     if (!user) {
-      setError('You must be signed in.');
+      setError("You must be signed in.");
       return;
     }
-    setStatus('waiting');
-    const { data, error } = await requestDebate(user.id);
-    if (error) {
-      setError(error.message);
-      setStatus('idle');
+    setStatus("waiting");
+    const { data, error: reqError } = await requestDebate(user.id);
+    if (reqError) {
+      setError(reqError.message);
+      setStatus("idle");
       return;
     }
     if (data?.match_id && data?.topic) {
-      setStatus('matched');
+      setStatus("matched");
       setMatchId(data.match_id);
       setTopic(data.topic);
       return;
